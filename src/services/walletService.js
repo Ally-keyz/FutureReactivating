@@ -58,11 +58,14 @@ const debit = async (walletId, userId, amount, type, referenceId = null, note = 
 };
 
 /**
- * Create all 4 wallets for a new user.
+ * Create all 3 wallets for a new user.
+ * - balance  → deposits / main spending wallet
+ * - profit   → daily investment earnings
+ * - bonus    → referral / promotional bonuses
  */
 const createWalletsForUser = async (userId, session = null) => {
   const opts = session ? { session, ordered: true } : {};
-  const types = ['balance', 'recharge', 'profit', 'bonus'];
+  const types = ['balance', 'profit', 'bonus'];
   return Wallet.create(types.map(type => ({ userId, type, balance: 0 })), opts);
 };
 

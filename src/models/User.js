@@ -14,10 +14,13 @@ const userSchema = new mongoose.Schema({
   lastLoginAt: { type: Date, default: null },
 }, { timestamps: true });
 
-// Wallet sub-schema embedded in User for atomic balance updates
+// Wallet sub-schema — 3 wallet types:
+//   balance  → funded by deposits; used to purchase investments
+//   profit   → receives daily investment earnings
+//   bonus    → receives referral / promotional bonuses
 const walletSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  type: { type: String, enum: ['balance', 'recharge', 'profit', 'bonus'], required: true },
+  type: { type: String, enum: ['balance', 'profit', 'bonus'], required: true },
   balance: { type: Number, default: 0, min: 0 },
 }, { timestamps: true });
 

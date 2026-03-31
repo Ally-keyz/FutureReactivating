@@ -16,7 +16,7 @@ exports.depositInfo = async (req, res) => {
       depositPhoneName: settings.deposit_phone_name || process.env.DEPOSIT_PHONE_NAME,
       minRecharge: parseInt(settings.min_recharge || process.env.MIN_RECHARGE || '5000'),
       confirmHours: 24,
-      instructions: 'Send money to the number above, then submit this form with your sender phone, sender name, and the exact amount sent. Your wallet will be credited within 24 hours after admin confirmation.',
+      instructions: 'Send money to the number above, then submit this form with your sender phone, sender name, and the exact amount sent. Your balance wallet will be credited within 24 hours after admin confirmation.',
     });
   } catch (err) {
     return error(res, err.message, 500);
@@ -27,7 +27,7 @@ exports.storeRules = [
   body('amount').isNumeric().withMessage('Amount must be a number')
     .custom(async (val) => {
       const min = parseInt(await settingService.get('min_recharge', '5000'));
-      if (parseFloat(val) < min) throw new Error(`Minimum recharge is ${min.toLocaleString()} RWF`);
+      if (parseFloat(val) < min) throw new Error(`Minimum deposit is ${min.toLocaleString()} RWF`);
       return true;
     }),
   body('senderPhone').trim().matches(/^\+?[0-9]{10,15}$/).withMessage('Valid sender phone required'),
@@ -47,8 +47,8 @@ exports.store = async (req, res) => {
       depositPhone,
     });
 
-    notificationService.send(req.user._id, 'info', 'Recharge Request Submitted',
-      `Your recharge of ${parseFloat(amount).toLocaleString()} RWF (Ref: ${request.referenceCode}) is under review. It will be confirmed within 24 hours.`
+    notificationService.send(req.user._id, 'info', 'Deposit Request Submitted',
+      `Your deposit of ${parseFloat(amount).toLocaleString()} RWF (Ref: ${request.referenceCode}) is under review. It will be confirmed within 24 hours.`
     ).catch(() => {});
 
     return success(res, {
@@ -56,11 +56,34 @@ exports.store = async (req, res) => {
       referenceCode: request.referenceCode,
       amount: request.amount,
       status: 'pending',
-      message: 'Recharge request submitted. Funds will appear in your wallet within 24 hours after admin approval.',
-    }, 'Recharge request submitted', 201);
+      message: 'Deposit request submitted. Funds will appear in your balance wallet within 24 hours after admin approval.',
+    }, 'Deposit request submitted', 201);
   } catch (err) {
     return error(res, err.message, 500);
   }
+};
+
+/**
+ * Called by the admin controller when approving a deposit request.
+ * Credits the user's BALANCE wallet (deposits always go to balance).
+ */
+exports.approve = async (userId, requestId, amount, session = null) => {
+  const opts = session ? { session } : {};
+
+  const balanceWallet = await Wallet.findOne({ userId, type: 'balance' }, null, opts);
+  if (!balanceWallet) throw new Error('Balance wallet not found for user');
+
+  await walletService.credit(
+    balanceWallet._id,
+    userId,
+    amount,
+    'deposit',
+    requestId,
+    'Deposit approved by admin',
+    session,
+  );
+
+  return balanceWallet;
 };
 
 exports.index = async (req, res) => {

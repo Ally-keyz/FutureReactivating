@@ -16,7 +16,7 @@ exports.storeRules = [
       return true;
     }),
   body('phone').trim().matches(/^\+?[0-9]{10,15}$/).withMessage('Valid phone number required'),
-  body('walletType').isIn(['balance', 'recharge', 'profit', 'bonus']).withMessage('Invalid wallet type'),
+  body('walletType').isIn(['balance', 'profit', 'bonus']).withMessage('Invalid wallet type'),
   body('pin').isLength({ min: 6, max: 6 }).withMessage('PIN must be 6 digits'),
 ];
 
@@ -27,7 +27,7 @@ exports.store = async (req, res) => {
     const { amount, phone, walletType, pin } = req.body;
     const parsedAmount = parseFloat(amount);
 
-    // Verify PIN
+    // Verify withdrawal PIN
     const user = await User.findById(req.user._id).select('withdrawPinHash');
     if (!user.withdrawPinHash) {
       await session.abortTransaction();
@@ -38,7 +38,7 @@ exports.store = async (req, res) => {
       return error(res, 'Incorrect withdrawal PIN.', 403);
     }
 
-    // Check daily limit
+    // Check daily withdrawal limit
     const maxDaily = parseFloat(await settingService.get('max_withdrawal_per_day', '5000000'));
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const [todayTotal] = await WithdrawalRequest.aggregate([
@@ -50,13 +50,14 @@ exports.store = async (req, res) => {
       return error(res, `Daily withdrawal limit of ${maxDaily.toLocaleString()} RWF exceeded.`, 400);
     }
 
-    // Get wallet and check balance
+    // Locate the chosen wallet and verify balance
     const wallet = await Wallet.findOne({ userId: req.user._id, type: walletType });
     if (!wallet) { await session.abortTransaction(); return error(res, 'Wallet not found', 404); }
     if (wallet.balance < parsedAmount) { await session.abortTransaction(); return error(res, 'Insufficient balance', 400); }
 
-    // Debit immediately (hold funds)
-    await walletService.debit(wallet._id, req.user._id, parsedAmount, 'withdrawal', null, 'Withdrawal hold - pending admin approval', session);
+    // Debit immediately to hold funds while request is pending
+    await walletService.debit(wallet._id, req.user._id, parsedAmount, 'withdrawal', null,
+      'Withdrawal hold - pending admin approval', session);
 
     const withdrawal = await WithdrawalRequest.create([{
       userId: req.user._id,

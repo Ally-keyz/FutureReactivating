@@ -22,16 +22,16 @@ const PRODUCTS = [
 ];
 
 const SETTINGS = [
-  { key: 'deposit_phone',           value: '+250788000000' },
-  { key: 'deposit_phone_name',      value: 'OCP Investment Ltd' },
+  { key: 'deposit_phone',           value: '+250793216191' },
+  { key: 'deposit_phone_name',      value: 'Vision Core Ltd' },
   { key: 'min_recharge',            value: '5000' },
   { key: 'min_withdrawal',          value: '10000' },
-  { key: 'max_withdrawal_per_day',  value: '5000000' },
+  { key: 'max_withdrawal_per_day',  value: '50000' },
   { key: 'commission_level_a',      value: '8' },
   { key: 'commission_level_b',      value: '4' },
   { key: 'commission_level_c',      value: '2' },
   { key: 'commission_level_d',      value: '1' },
-  { key: 'platform_name',           value: 'OCP Investment' },
+  { key: 'platform_name',           value: 'Vision Core' },
 ];
 
 (async () => {
@@ -47,7 +47,7 @@ const SETTINGS = [
   }
   console.log(`✓ ${SETTINGS.length} settings seeded`);
 
-  const existing = await Admin.findOne({ email: 'admin@ocp.rw' });
+  const existing = await Admin.findOne({ email: 'vicky@visioncore.co.rw' });
   if (!existing) {
     await Admin.create({
       name: 'Super Admin',

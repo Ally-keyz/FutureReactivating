@@ -22,7 +22,8 @@ const enrichInvestment = (inv) => {
 exports.storeRules = [
   body('productId').notEmpty().withMessage('Product ID required'),
   body('quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
-  body('walletType').isIn(['balance', 'recharge', 'profit', 'bonus']).withMessage('Invalid wallet type'),
+  // Investments can only be purchased from the balance wallet
+  body('walletType').isIn(['balance', 'profit', 'bonus']).withMessage('Invalid wallet type'),
 ];
 
 // ── GET /investments ───────────────────────────────────────────
@@ -96,7 +97,7 @@ exports.store = async (req, res) => {
     const available = product.totalSlots - product.filledSlots;
     if (quantity > available) { await session.abortTransaction(); return error(res, `Only ${available} slots available`, 400); }
 
-    // Check wallet
+    // Get the spending wallet (balance, profit, or bonus)
     const wallet = await Wallet.findOne({ userId: req.user._id, type: walletType }).session(session);
     if (!wallet) { await session.abortTransaction(); return error(res, 'Wallet not found', 404); }
 
@@ -108,11 +109,11 @@ exports.store = async (req, res) => {
     const startsAt = new Date();
     const endsAt = addDays(startsAt, product.periodDays);
 
-    // Deduct from wallet
+    // Deduct cost from the chosen spending wallet
     await walletService.debit(wallet._id, req.user._id, totalCost, 'investment', null,
       `Invested in ${product.name} ×${quantity}`, session);
 
-    // Create investment
+    // Create investment — always records which wallet was debited
     const [investment] = await Investment.create([{
       userId: req.user._id,
       productId: product._id,
@@ -129,7 +130,7 @@ exports.store = async (req, res) => {
     // Increment filled slots
     await Product.findByIdAndUpdate(product._id, { $inc: { filledSlots: quantity } }, { session });
 
-    // Pay commissions
+    // Pay referral commissions
     await commissionService.payOnInvestment(req.user._id, investment._id, totalCost, session);
 
     await session.commitTransaction();
@@ -173,11 +174,14 @@ exports.claimDaily = async (req, res) => {
     const newEarned = parseFloat((investment.totalEarned + amount).toFixed(2));
     const isComplete = newCompleted >= investment.periodDays;
 
-    // Credit wallet
-    await walletService.credit(investment.walletId, req.user._id, amount, 'daily_income',
+    // Always credit daily earnings into the profit wallet
+    const profitWallet = await Wallet.findOne({ userId: req.user._id, type: 'profit' }).session(session);
+    if (!profitWallet) { await session.abortTransaction(); return error(res, 'Profit wallet not found', 404); }
+
+    await walletService.credit(profitWallet._id, req.user._id, amount, 'daily_income',
       investment._id, `Daily income — day ${newCompleted}`, session);
 
-    // Update investment
+    // Update investment record
     await Investment.findByIdAndUpdate(investment._id, {
       daysCompleted: newCompleted,
       totalEarned: newEarned,
@@ -191,10 +195,10 @@ exports.claimDaily = async (req, res) => {
     // Notifications
     if (isComplete) {
       notificationService.send(req.user._id, 'success', 'Investment Completed!',
-        `Investment has matured. Total earned: ${newEarned.toLocaleString()} RWF released to your wallet.`).catch(() => {});
+        `Investment has matured. Total earned: ${newEarned.toLocaleString()} RWF released to your profit wallet.`).catch(() => {});
     } else {
       notificationService.send(req.user._id, 'reward', 'Daily Income Credited',
-        `${amount.toLocaleString()} RWF has been added to your wallet. Day ${newCompleted}/${investment.periodDays}.`).catch(() => {});
+        `${amount.toLocaleString()} RWF has been added to your profit wallet. Day ${newCompleted}/${investment.periodDays}.`).catch(() => {});
     }
 
     return success(res, { amountEarned: amount, daysCompleted: newCompleted, status: isComplete ? 'completed' : 'pending' });
