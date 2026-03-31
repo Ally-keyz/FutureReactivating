@@ -160,33 +160,19 @@ exports.recharges = async (req, res) => {
 
 exports.approveRecharge = async (req, res) => {
   try {
-    // ── Pre-flight: load request and wallets BEFORE transaction ──
-    // Doing .findOne inside the transaction then failing on a missing
-    // wallet caused the session to be in a broken state on abort.
     const request = await RechargeRequest.findOne({
       _id: req.params.id, status: 'pending',
     });
     if (!request) return error(res, 'Request not found or already processed', 404);
 
-    const [rechargeWallet, balanceWallet] = await Promise.all([
-      Wallet.findOne({ userId: request.userId, type: 'recharge' }),
-      Wallet.findOne({ userId: request.userId, type: 'balance' }),
-    ]);
-    if (!rechargeWallet) return error(res, 'Recharge wallet not found for user', 400);
-    if (!balanceWallet)  return error(res, 'Balance wallet not found for user', 400);
+    const balanceWallet = await Wallet.findOne({ userId: request.userId, type: 'balance' });
+    if (!balanceWallet) return error(res, 'Balance wallet not found for user', 400);
 
-    // ── Transaction: only DB writes go inside ─────────────────
     await withTransaction(async (session) => {
-      await walletService.credit(
-        rechargeWallet._id, request.userId, request.amount,
-        'recharge', request._id,
-        `Recharge approved ref:${request.referenceCode}`,
-        session
-      );
       await walletService.credit(
         balanceWallet._id, request.userId, request.amount,
         'recharge', request._id,
-        `Recharge balance ref:${request.referenceCode}`,
+        `Recharge approved ref:${request.referenceCode}`,
         session
       );
       await User.findByIdAndUpdate(
@@ -199,20 +185,18 @@ exports.approveRecharge = async (req, res) => {
       }, { session });
     });
 
-    // ── Side effects: outside transaction, always .catch() ────
     notificationService.send(
       request.userId, 'success', 'Recharge Approved',
       `${request.amount.toLocaleString()} RWF has been credited to your wallet. Ref: ${request.referenceCode}`
     ).catch(() => {});
 
-    // Socket is optional — require lazily so a missing config doesn't crash
     try {
-      const socketConfig = require('../config/socket');
-      const io = socketConfig.getIO?.();
+      const { getIO } = require('../config/socket');
+      const io = getIO?.();
       if (io) io.to(`user:${request.userId}`).emit('wallet:update', {
         type: 'recharge', amount: request.amount,
       });
-    } catch (_) { /* socket not configured — skip */ }
+    } catch (_) {}
 
     return success(res, null, 'Recharge approved');
   } catch (err) {

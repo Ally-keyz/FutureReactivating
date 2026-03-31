@@ -98,6 +98,70 @@ exports.index = async (req, res) => {
   }
 };
 
+exports.reject = async (req, res) => {
+  try {
+    const { note } = req.body;
+    const request = await RechargeRequest.findOneAndUpdate(
+      { _id: req.params.id, status: 'pending' },
+      {
+        status: 'rejected',
+        rejectionNote: note ?? '',
+        reviewedAt: new Date(),
+        reviewedBy: req.user._id,
+      },
+      { new: true }
+    );
+    if (!request) return error(res, 'Request not found or already processed', 404);
+
+    notificationService.send(
+      request.userId, 'error',
+      'Deposit Rejected',
+      `Your deposit request (Ref: ${request.referenceCode}) was rejected.${note ? ` Reason: ${note}` : ''}`
+    ).catch(() => {});
+
+    return success(res, { id: request._id, status: 'rejected' }, 'Recharge rejected');
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+};
+
+exports.approveHandler = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const request = await RechargeRequest.findOne(
+      { _id: req.params.id, status: 'pending' },
+      null,
+      { session }
+    );
+    if (!request) {
+      await session.abortTransaction();
+      return error(res, 'Request not found or already processed', 404);
+    }
+
+    await exports.approve(request.userId, request._id, request.amount, session);
+
+    request.status     = 'approved';
+    request.reviewedAt = new Date();
+    request.reviewedBy = req.user._id;
+    await request.save({ session });
+
+    await session.commitTransaction();
+
+    notificationService.send(
+      request.userId, 'success', 'Deposit Approved',
+      `Your deposit of ${request.amount.toLocaleString()} RWF (Ref: ${request.referenceCode}) has been approved.`
+    ).catch(() => {});
+
+    return success(res, { id: request._id, status: 'approved' }, 'Recharge approved');
+  } catch (err) {
+    await session.abortTransaction();
+    return error(res, err.message, 500);
+  } finally {
+    session.endSession();
+  }
+};
+
 exports.show = async (req, res) => {
   try {
     const request = await RechargeRequest.findOne({ _id: req.params.id, userId: req.user._id }).lean();
