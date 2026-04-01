@@ -213,3 +213,19 @@
 {"level":"info","message":"Socket.IO ready | Health: http://localhost:5000/health","timestamp":"2026-03-31 03:57:29"}
 {"level":"info","message":"[ExpireInvestmentsJob] Running...","timestamp":"2026-03-31 04:00:00"}
 {"level":"info","message":"[ExpireInvestmentsJob] Done. 0 investments expired.","timestamp":"2026-03-31 04:00:00"}
+{"level":"info","message":"Socket.IO initialized","timestamp":"2026-03-31 04:01:20"}
+{"level":"info","message":"MongoDB Atlas connected: ac-xivinjg-shard-00-01.wbuphdg.mongodb.net","timestamp":"2026-03-31 04:01:22"}
+{"level":"info","message":"OCP Backend running on port 5000 [production]","timestamp":"2026-03-31 04:01:22"}
+{"level":"info","message":"Socket.IO ready | Health: http://localhost:5000/health","timestamp":"2026-03-31 04:01:22"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2026-03-31 04:19:18"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2026-03-31 04:19:18"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2026-03-31 04:22:59"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2026-03-31 04:23:09"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2026-03-31 04:23:09"}
+{"level":"info","message":"Socket.IO initialized","timestamp":"2026-04-01 01:36:58"}
+{"level":"info","message":"MongoDB Atlas connected: ac-xivinjg-shard-00-00.wbuphdg.mongodb.net","timestamp":"2026-04-01 01:37:00"}
+{"level":"info","message":"OCP Backend running on port 5000 [production]","timestamp":"2026-04-01 01:37:00"}
+{"level":"info","message":"Socket.IO ready | Health: http://localhost:5000/health","timestamp":"2026-04-01 01:37:00"}
+{"level":"info","message":"[ExpireInvestmentsJob] Running...","timestamp":"2026-04-01 02:00:01"}
+{"level":"info","message":"[ExpireInvestmentsJob] Done. 0 investments expired.","timestamp":"2026-04-01 02:00:01"}
+{"level":"info","message":"SIGINT received — shutting down gracefully","timestamp":"2026-04-01 02:10:10"}
