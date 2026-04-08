@@ -17,6 +17,7 @@ const notificationService = require('./services/notificationService');
 const logger = require('./utils/logger');
 const { apiLimiter } = require('./middleware/rateLimiter');
 const { error } = require('./utils/response');
+const { protectAdmin } = require('./middleware/auth');
 
 // ── Routes ────────────────────────────────────────────────────
 const authRoutes         = require('./routes/auth');
@@ -29,6 +30,8 @@ const investmentRoutes   = require('./routes/investment');
 const teamRoutes         = require('./routes/team');
 const notificationRoutes = require('./routes/notification');
 const adminRoutes        = require('./routes/admin');
+const announcementRoutes      = require('./routes/Announcement');
+const announcementAdminRoutes = require('./routes/adminAnnouncement');
 
 const app = express();
 const server = http.createServer(app);
@@ -68,6 +71,11 @@ app.use('/api/investments',   investmentRoutes);
 app.use('/api/team',          teamRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin',         adminRoutes);
+// User route (requires protect middleware — already applied in the route file)
+app.use('/api/announcements', announcementRoutes);
+
+// Admin route — mount INSIDE your existing admin router or directly:
+app.use('/api/admin/announcements', protectAdmin, announcementAdminRoutes);
 
 // ── 404 ───────────────────────────────────────────────────────
 app.use((req, res) => error(res, `Route ${req.method} ${req.path} not found`, 404));
