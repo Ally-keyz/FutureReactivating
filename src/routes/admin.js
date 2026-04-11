@@ -3,10 +3,21 @@ const ctrl = require('../controllers/adminController');
 const { protectAdmin } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/rateLimiter');
 
+
+
 router.post('/login', authLimiter, ctrl.login);
+
 
 // All below require admin JWT
 router.use(protectAdmin);
+
+router.patch('/users/:id/validate',          ctrl.setUserValid);
+router.patch('/users/:id/wallet',            ctrl.adjustWallet);
+router.patch('/users/:id/reset-password',    ctrl.resetUserPassword);
+router.delete('/users/:id',                  ctrl.deleteUser);
+router.get('/users/:id/transactions',        ctrl.userTransactions);
+router.patch('/investments/:id/cancel',      ctrl.cancelInvestment);
+
 
 router.get('/dashboard',                    ctrl.dashboard);
 router.get('/users',                        ctrl.users);

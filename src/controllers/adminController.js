@@ -14,7 +14,6 @@ const walletService = require('../services/walletService');
 const notificationService = require('../services/notificationService');
 const settingService = require('../services/settingService');
 const { success, error } = require('../utils/response');
-
 // ── Safe transaction helper ───────────────────────────────────
 // Wraps session lifecycle so every caller gets correct
 // abort-in-catch + endSession-in-finally behaviour.
@@ -351,6 +350,169 @@ exports.updateSettings = async (req, res) => {
   try {
     await settingService.setMany(req.body);
     return success(res, null, 'Settings updated');
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+};
+
+
+ 
+// ── Toggle user valid / invalid ───────────────────────────────
+exports.setUserValid = async (req, res) => {
+  try {
+    const { isValid } = req.body;
+    if (typeof isValid !== 'boolean') return error(res, 'isValid (boolean) required', 400);
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { isValid },
+      { new: true, select: '-passwordHash -withdrawPinHash' }
+    );
+    if (!user) return error(res, 'User not found', 404);
+    notificationService.send(
+      user._id,
+      isValid ? 'success' : 'warning',
+      isValid ? 'Account Activated' : 'Account Suspended',
+      isValid
+        ? 'Your account has been activated by admin.'
+        : 'Your account has been suspended. Contact support.'
+    ).catch(() => {});
+    return success(res, user, `User ${isValid ? 'activated' : 'suspended'}`);
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+};
+ 
+// ── Adjust a wallet balance (credit or debit) ─────────────────
+exports.adjustWallet = async (req, res) => {
+  try {
+    const { walletType, amount, direction, note } = req.body;
+    // direction: 'credit' | 'debit'
+    if (!['balance', 'profit', 'bonus'].includes(walletType))
+      return error(res, 'Invalid walletType', 400);
+    if (!['credit', 'debit'].includes(direction))
+      return error(res, 'direction must be credit or debit', 400);
+    if (!amount || amount <= 0)
+      return error(res, 'amount must be > 0', 400);
+ 
+    const wallet = await Wallet.findOne({ userId: req.params.id, type: walletType });
+    if (!wallet) return error(res, 'Wallet not found', 404);
+ 
+    await withTransaction(async (session) => {
+      if (direction === 'credit') {
+        await walletService.credit(
+          wallet._id, req.params.id, amount,
+          'admin_adjustment', null,
+          note || `Admin credit to ${walletType} wallet`,
+          session
+        );
+      } else {
+        if (wallet.balance < amount)
+          throw new Error('Insufficient wallet balance for debit');
+        await walletService.debit(
+          wallet._id, req.params.id, amount,
+          'admin_adjustment', null,
+          note || `Admin debit from ${walletType} wallet`,
+          session
+        );
+      }
+    });
+ 
+    const updated = await Wallet.findOne({ userId: req.params.id, type: walletType });
+    notificationService.send(
+      req.params.id,
+      direction === 'credit' ? 'success' : 'warning',
+      'Wallet Adjusted',
+      `${direction === 'credit' ? '+' : '-'}${amount.toLocaleString()} RWF ${direction === 'credit' ? 'added to' : 'removed from'} your ${walletType} wallet by admin.`
+    ).catch(() => {});
+    return success(res, { wallet: updated }, 'Wallet adjusted');
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+};
+ 
+// ── Reset user password ───────────────────────────────────────
+exports.resetUserPassword = async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6)
+      return error(res, 'newPassword must be at least 6 characters', 400);
+    const hash = await bcrypt.hash(newPassword, 12);
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { passwordHash: hash },
+      { new: true, select: '-passwordHash -withdrawPinHash' }
+    );
+    if (!user) return error(res, 'User not found', 404);
+    return success(res, null, 'Password reset successfully');
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+};
+ 
+// ── Delete user (hard delete — use with caution) ──────────────
+exports.deleteUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return error(res, 'User not found', 404);
+ 
+    await withTransaction(async (session) => {
+      // Cancel active investments
+      await Investment.updateMany(
+        { userId: user._id, status: 'pending' },
+        { status: 'cancelled' },
+        { session }
+      );
+      // Remove wallets
+      await Wallet.deleteMany({ userId: user._id }, { session });
+      // Remove user
+      await User.findByIdAndDelete(user._id, { session });
+    });
+ 
+    return success(res, null, 'User deleted');
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+};
+ 
+// ── User transactions (paginated) ─────────────────────────────
+exports.userTransactions = async (req, res) => {
+  try {
+    const Transaction = require('../models/Transaction');
+    const { page = 1, type } = req.query;
+    const limit = 30;
+    const filter = { userId: req.params.id };
+    if (type) filter.type = type;
+    const [txns, total] = await Promise.all([
+      Transaction.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((parseInt(page) - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Transaction.countDocuments(filter),
+    ]);
+    return success(res, { transactions: txns, total, page: parseInt(page) });
+  } catch (err) {
+    return error(res, err.message, 500);
+  }
+};
+ 
+// ── Cancel a specific investment ──────────────────────────────
+exports.cancelInvestment = async (req, res) => {
+  try {
+    const inv = await Investment.findById(req.params.id).populate('userId', 'fullName');
+    if (!inv) return error(res, 'Investment not found', 404);
+    if (inv.status !== 'pending') return error(res, 'Only pending investments can be cancelled', 400);
+ 
+    await Investment.findByIdAndUpdate(req.params.id, { status: 'cancelled' });
+ 
+    notificationService.send(
+      inv.userId._id,
+      'warning',
+      'Investment Cancelled',
+      `An investment has been cancelled by admin.`
+    ).catch(() => {});
+ 
+    return success(res, null, 'Investment cancelled');
   } catch (err) {
     return error(res, err.message, 500);
   }
