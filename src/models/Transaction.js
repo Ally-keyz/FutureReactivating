@@ -5,7 +5,7 @@ const transactionSchema = new mongoose.Schema({
   walletId: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet', required: true },
   type: {
     type: String,
-    enum: ['recharge', 'withdrawal', 'investment', 'daily_income', 'team_commission', 'refund', 'transfer'],
+    enum: ['recharge', 'withdrawal', 'investment', 'daily_income', 'team_commission', 'refund', 'transfer' , 'admin_adjustment'],
     required: true,
   },
   direction: { type: String, enum: ['credit', 'debit'], required: true },
